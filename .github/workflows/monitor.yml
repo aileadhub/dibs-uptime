@@ -1,0 +1,47 @@
+name: Dibs uptime
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+    # Weekly: re-enable the schedule. GitHub switches off scheduled workflows
+    # in a repository with no activity for 60 days.
+    - cron: "17 9 * * 1"
+  workflow_dispatch:
+    inputs:
+      test_alert:
+        description: "Send a test alert to every channel (nothing is down)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  issues: write
+  actions: write
+
+concurrency:
+  group: dibs-uptime
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check Dibs and alert
+        run: node monitor.mjs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TEST_ALERT: ${{ inputs.test_alert }}
+          BREVO_API_KEY: ${{ secrets.BREVO_API_KEY }}
+          ALERT_EMAILS: ${{ secrets.ALERT_EMAILS }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
+          TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
+          TWILIO_FROM: ${{ secrets.TWILIO_FROM }}
+          ALERT_PHONES: ${{ secrets.ALERT_PHONES }}
+      - name: Keep the schedule alive
+        if: github.event.schedule == '17 9 * * 1'
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/monitor.yml/enable"
+        env:
+          GH_TOKEN: ${{ github.token }}
