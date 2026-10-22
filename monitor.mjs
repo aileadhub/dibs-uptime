@@ -12,6 +12,11 @@
 // While it lasts: a reminder every 30 minutes, and up to 3 calls in all.
 // When it is over: "back up" on Slack and email, and the issue is closed.
 //
+// GitHub runs a "*/5" schedule only every 3 to 4 hours on a small project
+// (measured 16 to 21 October 2026: 6 to 8 runs a day). So one run checks
+// every 5 minutes for LOOP_MINUTES and then hands over to the next run,
+// which the workflow starts itself. The schedule is only a backstop.
+//
 // No secrets live in this file. Everything comes from repository secrets.
 
 const env = process.env;
@@ -153,7 +158,7 @@ const howToFix = [
 ].join("\n");
 
 // ── Main ─────────────────────────────────────────────────────────────────
-async function main() {
+async function checkOnce() {
   if (TEST) {
     const r = await notify({
       subject: "TEST: Dibs alert check",
@@ -198,7 +203,21 @@ async function main() {
     return;
   }
 
-  console.log("All checks pass.");
+  console.log(`${new Date().toISOString().slice(11, 16)} UTC all checks pass.`);
+}
+
+async function main() {
+  const loopMin = Number(env.LOOP_MINUTES) || 0;
+  if (TEST || !loopMin) return checkOnce();
+  const until = Date.now() + loopMin * 60000;
+  for (;;) {
+    const started = Date.now();
+    try { await checkOnce(); } catch (e) { console.error("check failed:", e.message); }
+    const next = started + 5 * 60000;
+    if (next > until) break;
+    await sleep(Math.max(0, next - Date.now()));
+  }
+  console.log(`Watched for ${loopMin} minutes; handing over to the next run.`);
 }
 
 main().catch((e) => { console.error(e); process.exitCode = 1; });
